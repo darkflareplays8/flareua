@@ -1,0 +1,97 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+		AA000001 = {isa = PBXBuildFile; fileRef = AA000002; };
+
+		AA000002 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			name = FlareUAApp.swift;
+			path = FlareUAApp.swift;
+			sourceTree = "<group>";
+		};
+
+		AA000003 = {
+			isa = PBXGroup;
+			children = (AA000002,);
+			name = FlareUA;
+			sourceTree = "<group>";
+		};
+
+		AA000004 = {
+			isa = PBXGroup;
+			children = (AA000003,);
+			sourceTree = "<group>";
+		};
+
+		AA000005 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (AA000001,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		AA000006 = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA000008;
+			buildPhases = (AA000005,);
+			name = FlareUA;
+			productName = FlareUA;
+			productType = "com.apple.product-type.application";
+		};
+
+		AA000007 = {
+			isa = PBXProject;
+			buildConfigurationList = AA000009;
+			compatibilityVersion = "Xcode 14.0";
+			mainGroup = AA000004;
+			targets = (AA000006,);
+		};
+
+		AA000008 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (AA000010,);
+			defaultConfigurationName = Release;
+		};
+
+		AA000009 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (AA000011,);
+			defaultConfigurationName = Release;
+		};
+
+		AA000010 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_IDENTIFIER = "com.flareua.app";
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = "1.0.0";
+				PRODUCT_NAME = FlareUA;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+
+		AA000011 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+
+	};
+	rootObject = AA000007;
+}

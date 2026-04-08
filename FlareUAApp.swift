@@ -1,6 +1,9 @@
 import SwiftUI
 import Foundation
 
+let flareHost = "flareua.pages.dev"
+let flareURL = "https://\(flareHost)"
+
 struct UserAgent: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -51,12 +54,10 @@ let presetUserAgents: [UserAgent] = [
 class FlareUAStore: ObservableObject {
     @Published var customAgents: [UserAgent] = []
     @Published var activeAgent: UserAgent? = nil
-    @Published var workerURL: String = ""
     @Published var isProxyInstalled: Bool = false
 
     private let customKey = "flareua_custom"
     private let activeKey = "flareua_active"
-    private let workerKey = "flareua_worker"
     private let installedKey = "flareua_installed"
 
     init() {
@@ -72,7 +73,6 @@ class FlareUAStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(UserAgent.self, from: data) {
             activeAgent = decoded
         }
-        workerURL = UserDefaults.standard.string(forKey: workerKey) ?? ""
         isProxyInstalled = UserDefaults.standard.bool(forKey: installedKey)
     }
 
@@ -83,7 +83,6 @@ class FlareUAStore: ObservableObject {
         if let data = try? JSONEncoder().encode(activeAgent) {
             UserDefaults.standard.set(data, forKey: activeKey)
         }
-        UserDefaults.standard.set(workerURL, forKey: workerKey)
         UserDefaults.standard.set(isProxyInstalled, forKey: installedKey)
     }
 
@@ -103,18 +102,7 @@ class FlareUAStore: ObservableObject {
         save()
     }
 
-    func updateWorkerURL(_ url: String) {
-        workerURL = url
-        save()
-    }
-
     func generateMobileConfig() -> String {
-        guard !workerURL.isEmpty else { return "" }
-        let host = workerURL
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-            .trimmingCharacters(in: .init(charactersIn: "/"))
-
         return """
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -122,24 +110,6 @@ class FlareUAStore: ObservableObject {
 <dict>
     <key>PayloadContent</key>
     <array>
-        <dict>
-            <key>PayloadType</key>
-            <string>com.apple.wifi.managed</string>
-            <key>PayloadUUID</key>
-            <string>A1B2C3D4-E5F6-7890-ABCD-EF1234567890</string>
-            <key>PayloadIdentifier</key>
-            <string>com.flareua.proxy.wifi</string>
-            <key>PayloadVersion</key>
-            <integer>1</integer>
-            <key>ProxyType</key>
-            <string>Manual</string>
-            <key>ProxyServer</key>
-            <string>\(host)</string>
-            <key>ProxyServerPort</key>
-            <integer>443</integer>
-            <key>ProxyCaptiveLoginAllowed</key>
-            <true/>
-        </dict>
         <dict>
             <key>PayloadType</key>
             <string>com.apple.proxies.managed</string>
@@ -152,13 +122,13 @@ class FlareUAStore: ObservableObject {
             <key>HTTPEnable</key>
             <integer>1</integer>
             <key>HTTPProxy</key>
-            <string>\(host)</string>
+            <string>\(flareHost)</string>
             <key>HTTPPort</key>
             <integer>443</integer>
             <key>HTTPSEnable</key>
             <integer>1</integer>
             <key>HTTPSProxy</key>
-            <string>\(host)</string>
+            <string>\(flareHost)</string>
             <key>HTTPSPort</key>
             <integer>443</integer>
         </dict>
@@ -199,7 +169,7 @@ struct ContentView: View {
                 .tabItem { Label("Custom", systemImage: "plus.circle.fill") }
                 .tag(2)
             SettingsView()
-                .tabItem { Label("Setup", systemImage: "gear") }
+                .tabItem { Label("About", systemImage: "info.circle.fill") }
                 .tag(3)
         }
         .accentColor(.orange)
@@ -265,14 +235,14 @@ struct HomeView: View {
                         .padding(.horizontal)
                     }
 
-                    if store.workerURL.isEmpty || !store.isProxyInstalled {
+                    if !store.isProxyInstalled {
                         VStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
                                 .font(.title2)
-                            Text(store.workerURL.isEmpty ? "Worker URL not set" : "Proxy profile not installed")
+                            Text("Proxy profile not installed")
                                 .font(.subheadline.bold())
-                            Text("Go to Setup tab to configure FlareUA")
+                            Text("Go to About tab to install")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -437,50 +407,37 @@ struct CustomView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var store: FlareUAStore
-    @State var urlInput = ""
     @State var showInstallError = false
     @State var installErrorMsg = ""
+
+    var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+    }
 
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Worker URL"), footer: Text("Deploy the FlareUA worker and paste its URL here.")) {
-                    TextField("https://flareua.yourname.workers.dev", text: $urlInput)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                    Button("Save URL") {
-                        store.updateWorkerURL(urlInput.trimmingCharacters(in: .whitespaces))
+                Section(header: Text("Proxy Profile"), footer: Text("Installs a system-wide proxy profile that routes all HTTP/HTTPS traffic through FlareUA.")) {
+                    Button {
+                        installMobileConfig()
+                    } label: {
+                        Label("Install Proxy Profile", systemImage: "arrow.down.circle.fill")
+                            .foregroundColor(.orange)
                     }
-                    .disabled(urlInput.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
 
-                Section(header: Text("Proxy Profile"), footer: Text("Tap Install to push the .mobileconfig directly to iOS — no copying or Safari needed.")) {
-                    if store.workerURL.isEmpty {
-                        Label("Set Worker URL first", systemImage: "exclamationmark.circle")
-                            .foregroundColor(.secondary)
-                    } else {
-                        Button {
-                            installMobileConfig()
-                        } label: {
-                            Label("Install Proxy Profile", systemImage: "arrow.down.circle.fill")
-                                .foregroundColor(.orange)
-                        }
-
-                        Toggle("Profile installed", isOn: Binding(
-                            get: { store.isProxyInstalled },
-                            set: { store.isProxyInstalled = $0; store.save() }
-                        ))
-                    }
+                    Toggle("Profile installed", isOn: Binding(
+                        get: { store.isProxyInstalled },
+                        set: { store.isProxyInstalled = $0; store.save() }
+                    ))
                 }
 
                 Section("About") {
                     LabeledContent("App", value: "FlareUA")
-                    LabeledContent("Version", value: "1.0.0")
-                    LabeledContent("Worker", value: store.workerURL.isEmpty ? "Not set" : store.workerURL)
+                    LabeledContent("Version", value: appVersion)
+                    LabeledContent("Proxy", value: flareHost)
                 }
             }
-            .navigationTitle("Setup")
-            .onAppear { urlInput = store.workerURL }
+            .navigationTitle("About")
             .alert("Install Failed", isPresented: $showInstallError) {
                 Button("OK") {}
             } message: {
@@ -491,14 +448,7 @@ struct SettingsView: View {
 
     func installMobileConfig() {
         let config = store.generateMobileConfig()
-        guard !config.isEmpty else {
-            installErrorMsg = "Could not generate profile. Make sure your Worker URL is set."
-            showInstallError = true
-            return
-        }
-
-        let filename = "FlareUA.mobileconfig"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("FlareUA.mobileconfig")
 
         do {
             try config.write(to: tempURL, atomically: true, encoding: .utf8)
@@ -516,7 +466,7 @@ struct SettingsView: View {
                 }
             } else {
                 DispatchQueue.main.async {
-                    installErrorMsg = "iOS couldn't open the profile. Try going to Settings > General > VPN & Device Management manually."
+                    installErrorMsg = "iOS couldn't open the profile. Go to Settings > General > VPN & Device Management manually."
                     showInstallError = true
                 }
             }

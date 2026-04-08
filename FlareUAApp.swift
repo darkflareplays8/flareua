@@ -1,8 +1,10 @@
 import SwiftUI
 import Foundation
+import NetworkExtension
 
 let flareHost = "flareua.pages.dev"
 let flareURL = "https://\(flareHost)"
+let profileIdentifier = "com.flareua.profile"
 
 struct UserAgent: Identifiable, Codable, Equatable {
     let id: UUID
@@ -58,7 +60,6 @@ class FlareUAStore: ObservableObject {
 
     private let customKey = "flareua_custom"
     private let activeKey = "flareua_active"
-    private let installedKey = "flareua_installed"
 
     init() {
         load()
@@ -73,7 +74,6 @@ class FlareUAStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(UserAgent.self, from: data) {
             activeAgent = decoded
         }
-        isProxyInstalled = UserDefaults.standard.bool(forKey: installedKey)
     }
 
     func save() {
@@ -83,7 +83,6 @@ class FlareUAStore: ObservableObject {
         if let data = try? JSONEncoder().encode(activeAgent) {
             UserDefaults.standard.set(data, forKey: activeKey)
         }
-        UserDefaults.standard.set(isProxyInstalled, forKey: installedKey)
     }
 
     func setActive(_ agent: UserAgent?) {
@@ -100,6 +99,30 @@ class FlareUAStore: ObservableObject {
         customAgents.removeAll { $0.id == agent.id }
         if activeAgent?.id == agent.id { activeAgent = nil }
         save()
+    }
+
+    // Checks NEProxyManager to verify whether the FlareUA proxy profile is actually installed.
+    // This runs on appear and every time the app returns to foreground.
+    func checkProfileInstalled() {
+        NEProxyManager.shared().loadFromPreferences { [weak self] error in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                guard error == nil else {
+                    self.isProxyInstalled = false
+                    return
+                }
+                let proxy = NEProxyManager.shared()
+                let cfg = proxy.proxySettings
+                let httpHost = cfg?.httpServer?.address ?? ""
+                let httpsHost = cfg?.httpsServer?.address ?? ""
+                let found = proxy.isEnabled && (httpHost == flareHost || httpsHost == flareHost)
+                self.isProxyInstalled = found
+                if !found {
+                    self.activeAgent = nil
+                    self.save()
+                }
+            }
+        }
     }
 
     func generateMobileConfig() -> String {
@@ -136,7 +159,7 @@ class FlareUAStore: ObservableObject {
     <key>PayloadDisplayName</key>
     <string>FlareUA Proxy</string>
     <key>PayloadIdentifier</key>
-    <string>com.flareua.profile</string>
+    <string>\(profileIdentifier)</string>
     <key>PayloadType</key>
     <string>Configuration</string>
     <key>PayloadUUID</key>
@@ -174,6 +197,12 @@ struct ContentView: View {
         }
         .accentColor(.orange)
         .environmentObject(store)
+        .onAppear {
+            store.checkProfileInstalled()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            store.checkProfileInstalled()
+        }
     }
 }
 
@@ -186,20 +215,26 @@ struct HomeView: View {
                 VStack(spacing: 20) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 20)
-                            .fill(LinearGradient(colors: [.orange, .red], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .fill(LinearGradient(
+                                colors: store.isProxyInstalled
+                                    ? [.orange, .red]
+                                    : [.gray, Color(.systemGray3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
                         VStack(spacing: 8) {
-                            Image(systemName: store.activeAgent != nil ? "shield.fill" : "shield.slash.fill")
+                            Image(systemName: (store.isProxyInstalled && store.activeAgent != nil) ? "shield.fill" : "shield.slash.fill")
                                 .font(.system(size: 44))
                                 .foregroundColor(.white)
-                            Text(store.activeAgent != nil ? "Active" : "Inactive")
+                            Text((store.isProxyInstalled && store.activeAgent != nil) ? "Active" : "Inactive")
                                 .font(.title2.bold())
                                 .foregroundColor(.white)
-                            if let agent = store.activeAgent {
+                            if store.isProxyInstalled, let agent = store.activeAgent {
                                 Text(agent.name)
                                     .font(.subheadline)
                                     .foregroundColor(.white.opacity(0.85))
                             } else {
-                                Text("No agent selected")
+                                Text(store.isProxyInstalled ? "No agent selected" : "Profile not installed")
                                     .font(.subheadline)
                                     .foregroundColor(.white.opacity(0.7))
                             }
@@ -208,7 +243,7 @@ struct HomeView: View {
                     }
                     .padding(.horizontal)
 
-                    if let agent = store.activeAgent {
+                    if store.isProxyInstalled, let agent = store.activeAgent {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Current UA String")
                                 .font(.caption.bold())
@@ -242,9 +277,10 @@ struct HomeView: View {
                                 .font(.title2)
                             Text("Proxy profile not installed")
                                 .font(.subheadline.bold())
-                            Text("Go to About tab to install")
+                            Text("Go to About tab to install, then return here")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
                         }
                         .padding()
                         .frame(maxWidth: .infinity)
@@ -276,29 +312,51 @@ struct BrowseView: View {
 
     var body: some View {
         NavigationView {
-            List {
-                if !store.customAgents.isEmpty {
-                    Section("Custom") {
-                        ForEach(store.customAgents.filter {
-                            search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
-                        }) { agent in
-                            UARow(agent: agent)
-                        }
-                    }
-                }
-                ForEach(categories, id: \.self) { cat in
-                    let items = filteredPresets.filter { $0.category == cat }
-                    if !items.isEmpty {
-                        Section(cat) {
-                            ForEach(items) { agent in
+            ZStack {
+                List {
+                    if !store.customAgents.isEmpty {
+                        Section("Custom") {
+                            ForEach(store.customAgents.filter {
+                                search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
+                            }) { agent in
                                 UARow(agent: agent)
                             }
                         }
                     }
+                    ForEach(categories, id: \.self) { cat in
+                        let items = filteredPresets.filter { $0.category == cat }
+                        if !items.isEmpty {
+                            Section(cat) {
+                                ForEach(items) { agent in
+                                    UARow(agent: agent)
+                                }
+                            }
+                        }
+                    }
+                }
+                .searchable(text: $search, prompt: "Search agents...")
+                .navigationTitle("Agents")
+                .disabled(!store.isProxyInstalled)
+
+                if !store.isProxyInstalled {
+                    ZStack {
+                        Color(.systemBackground).opacity(0.85)
+                        VStack(spacing: 14) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.orange)
+                            Text("Profile Not Installed")
+                                .font(.headline)
+                            Text("Install the proxy profile in the About tab before selecting a user agent.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                        }
+                    }
+                    .ignoresSafeArea()
                 }
             }
-            .searchable(text: $search, prompt: "Search agents...")
-            .navigationTitle("Agents")
         }
     }
 }
@@ -338,6 +396,7 @@ struct UARow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            guard store.isProxyInstalled else { return }
             store.setActive(isActive ? nil : agent)
         }
         .swipeActions(edge: .trailing) {
@@ -409,6 +468,7 @@ struct SettingsView: View {
     @EnvironmentObject var store: FlareUAStore
     @State var showInstallError = false
     @State var installErrorMsg = ""
+    @State var isCheckingProfile = false
 
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -417,7 +477,18 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Proxy Profile"), footer: Text("Installs a system-wide proxy profile that routes all HTTP/HTTPS traffic through FlareUA.")) {
+                Section(
+                    header: Text("Proxy Profile"),
+                    footer: Text("Installs a system-wide proxy profile that routes all HTTP/HTTPS traffic through FlareUA. After installing in Settings, return to the app — status updates automatically.")
+                ) {
+                    HStack {
+                        Label("Status", systemImage: store.isProxyInstalled ? "checkmark.seal.fill" : "xmark.seal.fill")
+                        Spacer()
+                        Text(store.isProxyInstalled ? "Installed" : "Not Installed")
+                            .foregroundColor(store.isProxyInstalled ? .green : .red)
+                            .font(.subheadline)
+                    }
+
                     Button {
                         installMobileConfig()
                     } label: {
@@ -425,10 +496,22 @@ struct SettingsView: View {
                             .foregroundColor(.orange)
                     }
 
-                    Toggle("Profile installed", isOn: Binding(
-                        get: { store.isProxyInstalled },
-                        set: { store.isProxyInstalled = $0; store.save() }
-                    ))
+                    Button {
+                        isCheckingProfile = true
+                        store.checkProfileInstalled()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            isCheckingProfile = false
+                        }
+                    } label: {
+                        HStack {
+                            Label("Check Profile Status", systemImage: "arrow.clockwise")
+                                .foregroundColor(.blue)
+                            if isCheckingProfile {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
                 }
 
                 Section("About") {
@@ -459,16 +542,12 @@ struct SettingsView: View {
         }
 
         UIApplication.shared.open(tempURL) { success in
-            if success {
-                DispatchQueue.main.async {
-                    store.isProxyInstalled = true
-                    store.save()
+            DispatchQueue.main.async {
+                if !success {
+                    self.installErrorMsg = "iOS couldn't open the profile. Go to Settings > General > VPN & Device Management manually."
+                    self.showInstallError = true
                 }
-            } else {
-                DispatchQueue.main.async {
-                    installErrorMsg = "iOS couldn't open the profile. Go to Settings > General > VPN & Device Management manually."
-                    showInstallError = true
-                }
+                // Do NOT mark as installed here — checkProfileInstalled() on foreground return handles it
             }
         }
     }

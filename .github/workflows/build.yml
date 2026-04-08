@@ -8,65 +8,13 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Create project structure
-        run: |
-          mkdir -p FlareUA/FlareUA.xcodeproj
-          mkdir -p FlareUA/Sources
-          cp ios/FlareUAApp.swift FlareUA/Sources/
-
-      - name: Write pbxproj
-        run: |
-cat > FlareUA/FlareUA.xcodeproj/project.pbxproj << 'PBXEOF'
-// !$*UTF8*$!
-{
-  archiveVersion = 1;
-  classes = {};
-  objectVersion = 56;
-  objects = {
-    AA000001 = {isa = PBXBuildFile; fileRef = AA000002; };
-    AA000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FlareUAApp.swift; path = Sources/FlareUAApp.swift; sourceTree = "<group>"; };
-    AA000003 = {isa = PBXGroup; children = (AA000002,); name = FlareUA; sourceTree = "<group>"; };
-    AA000004 = {isa = PBXGroup; children = (AA000003,); sourceTree = "<group>"; };
-    AA000005 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AA000001,); runOnlyForDeploymentPostprocessing = 0; };
-    AA000006 = {isa = PBXNativeTarget; buildConfigurationList = AA000008; buildPhases = (AA000005,); name = FlareUA; productName = FlareUA; productType = "com.apple.product-type.application"; };
-    AA000007 = {isa = PBXProject; buildConfigurationList = AA000009; mainGroup = AA000004; targets = (AA000006,); };
-    AA000008 = {isa = XCConfigurationList; buildConfigurations = (AA000010,); defaultConfigurationName = Release; };
-    AA000009 = {isa = XCConfigurationList; buildConfigurations = (AA000011,); defaultConfigurationName = Release; };
-    AA000010 = {
-      isa = XCBuildConfiguration;
-      buildSettings = {
-        BUNDLE_IDENTIFIER = "com.flareua.app";
-        CURRENT_PROJECT_VERSION = "1.0.${{ github.run_number }}";
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-        INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-        IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-        MARKETING_VERSION = "1.0.${{ github.run_number }}";
-        PRODUCT_NAME = FlareUA;
-        SDKROOT = iphoneos;
-        SWIFT_VERSION = 5.0;
-        CODE_SIGN_IDENTITY = "";
-        CODE_SIGNING_REQUIRED = NO;
-        CODE_SIGNING_ALLOWED = NO;
-      };
-      name = Release;
-    };
-    AA000011 = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
-  };
-  rootObject = AA000007;
-}
-PBXEOF
 
       - name: Build unsigned IPA
         run: |
           xcodebuild \
-            -project FlareUA/FlareUA.xcodeproj \
+            -project FlareUA.xcodeproj \
             -scheme FlareUA \
             -configuration Release \
             -sdk iphoneos \

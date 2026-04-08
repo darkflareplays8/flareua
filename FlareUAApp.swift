@@ -121,10 +121,13 @@ class FlareUAStore: ObservableObject {
         guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
             return false
         }
+        // kCFNetworkProxiesHTTPSEnable / kCFNetworkProxiesHTTPSProxy are macOS-only.
+        // On iOS, CFNetworkCopySystemProxySettings exposes HTTP proxy keys only.
         let httpEnabled = (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
-        let httpsEnabled = (settings[kCFNetworkProxiesHTTPSEnable as String] as? Int) == 1
         let httpHost = settings[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
-        let httpsHost = settings[kCFNetworkProxiesHTTPSProxy as String] as? String ?? ""
+        // The HTTPS proxy keys use these raw string values on iOS (not the typed constants).
+        let httpsEnabled = (settings["HTTPSEnable"] as? Int) == 1
+        let httpsHost = settings["HTTPSProxy"] as? String ?? ""
         return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
     }
 

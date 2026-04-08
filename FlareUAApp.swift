@@ -1,6 +1,5 @@
 import SwiftUI
 import Foundation
-import NetworkExtension
 
 let flareHost = "flareua.pages.dev"
 let flareURL = "https://\(flareHost)"
@@ -101,21 +100,14 @@ class FlareUAStore: ObservableObject {
         save()
     }
 
-    // Checks NEProxyManager to verify whether the FlareUA proxy profile is actually installed.
-    // This runs on appear and every time the app returns to foreground.
+    // Reads the system proxy settings via CFNetwork (no entitlement required).
+    // The mobileconfig installs an HTTP/HTTPS proxy pointing at flareHost.
+    // We verify both that the proxy is enabled and that the configured host matches.
     func checkProfileInstalled() {
-        NEProxyManager.shared().loadFromPreferences { [weak self] error in
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+            let found = Self.proxyProfileIsActive()
             DispatchQueue.main.async {
-                guard error == nil else {
-                    self.isProxyInstalled = false
-                    return
-                }
-                let proxy = NEProxyManager.shared()
-                let cfg = proxy.proxySettings
-                let httpHost = cfg?.httpServer?.address ?? ""
-                let httpsHost = cfg?.httpsServer?.address ?? ""
-                let found = proxy.isEnabled && (httpHost == flareHost || httpsHost == flareHost)
                 self.isProxyInstalled = found
                 if !found {
                     self.activeAgent = nil
@@ -123,6 +115,17 @@ class FlareUAStore: ObservableObject {
                 }
             }
         }
+    }
+
+    private static func proxyProfileIsActive() -> Bool {
+        guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
+            return false
+        }
+        let httpEnabled = (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
+        let httpsEnabled = (settings[kCFNetworkProxiesHTTPSEnable as String] as? Int) == 1
+        let httpHost = settings[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
+        let httpsHost = settings[kCFNetworkProxiesHTTPSProxy as String] as? String ?? ""
+        return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
     }
 
     func generateMobileConfig() -> String {

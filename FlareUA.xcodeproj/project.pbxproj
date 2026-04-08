@@ -68,7 +68,7 @@
 		AA000010 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_IDENTIFIER = "dev.pages.flareua";
+				BUNDLE_IDENTIFIER = "com.flareua.app";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FlareUA;

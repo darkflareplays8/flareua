@@ -4,6 +4,9 @@ const url = require("url");
 
 const PORT = process.env.PORT || 8080;
 const UA_HEADER = "x-flareua-agent";
+const PROXY_HOST = "flareua-production.up.railway.app";
+const PROXY_PORT = 8080;
+const PROFILE_IDENTIFIER = "com.flareua.profile";
 
 function rewriteUA(headers, customUA) {
   const out = { ...headers };
@@ -12,6 +15,54 @@ function rewriteUA(headers, customUA) {
   delete out["proxy-connection"];
   delete out["proxy-authorization"];
   return out;
+}
+
+function getMobileConfig() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.proxies.managed</string>
+            <key>PayloadUUID</key>
+            <string>B2C3D4E5-F6A7-8901-BCDE-F12345678901</string>
+            <key>PayloadIdentifier</key>
+            <string>com.flareua.proxy.managed</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>HTTPEnable</key>
+            <integer>1</integer>
+            <key>HTTPProxy</key>
+            <string>${PROXY_HOST}</string>
+            <key>HTTPPort</key>
+            <integer>${PROXY_PORT}</integer>
+            <key>HTTPSEnable</key>
+            <integer>1</integer>
+            <key>HTTPSProxy</key>
+            <string>${PROXY_HOST}</string>
+            <key>HTTPSPort</key>
+            <integer>${PROXY_PORT}</integer>
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>FlareUA Proxy</string>
+    <key>PayloadIdentifier</key>
+    <string>${PROFILE_IDENTIFIER}</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>C3D4E5F6-A7B8-9012-CDEF-123456789012</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadDescription</key>
+    <string>Routes HTTP/HTTPS traffic through FlareUA for User-Agent rewriting.</string>
+    <key>PayloadOrganization</key>
+    <string>FlareUA</string>
+</dict>
+</plist>`;
 }
 
 const server = http.createServer((req, res) => {
@@ -24,6 +75,16 @@ const server = http.createServer((req, res) => {
   if (req.url === "/flareua-probe") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ proxied: true }));
+    return;
+  }
+
+  if (req.url === "/profile") {
+    const config = getMobileConfig();
+    res.writeHead(200, {
+      "Content-Type": "application/x-apple-aspen-config",
+      "Content-Disposition": 'attachment; filename="flareua.mobileconfig"',
+    });
+    res.end(config);
     return;
   }
 

@@ -103,14 +103,18 @@ class FlareUAStore: ObservableObject {
     @Published var proxyDebugDump: String = ""
 
     func checkProfileInstalled() {
-        // Make a plain HTTP request to a fake domain that only resolves if
-        // our proxy is active and routing it to flareua.pages.dev/probe.
-        // The worker returns {"proxied":true} when Host != flareua.pages.dev.
-        guard let url = URL(string: "http://flareua-probe.invalid/probe") else { return }
+        // Send a plain HTTP request to example.com.
+        // If our proxy is active, the worker intercepts it, sees Host: example.com
+        // with path /flareua-probe, and returns {"proxied":true}.
+        // Without the proxy, example.com serves its own response which won't
+        // contain that JSON.
+        guard let url = URL(string: "http://example.com/flareua-probe") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("1", forHTTPHeaderField: "X-FlareUA-Probe")
+        req.timeoutInterval = 6
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 6
         let session = URLSession(configuration: config)
-        session.dataTask(with: url) { [weak self] data, _, error in
+        session.dataTask(with: req) { [weak self] data, response, error in
             guard let self = self else { return }
             let proxied: Bool
             if let data = data,
@@ -121,7 +125,7 @@ class FlareUAStore: ObservableObject {
                 proxied = false
             }
             DispatchQueue.main.async {
-                self.proxyDebugDump = proxied ? "Probe: proxied=true" : "Probe: no proxy response (error: \(error?.localizedDescription ?? "nil data"))"
+                self.proxyDebugDump = proxied ? "Probe: proxied=true" : "Probe: proxied=false (error: \(error?.localizedDescription ?? "bad response"))"
                 self.isProxyInstalled = proxied
                 if !proxied {
                     self.activeAgent = nil

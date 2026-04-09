@@ -2,8 +2,8 @@ import SwiftUI
 import Foundation
 
 let flareHost = "flareua.pages.dev"
-let flareURL = "https://\(flareHost)"
 let profileIdentifier = "com.flareua.profile"
+let profileInstallURL = URL(string: "http://\(flareHost)/profile")!
 
 struct UserAgent: Identifiable, Codable, Equatable {
     let id: UUID
@@ -100,9 +100,6 @@ class FlareUAStore: ObservableObject {
         save()
     }
 
-    // Reads the system proxy settings via CFNetwork (no entitlement required).
-    // The mobileconfig installs an HTTP/HTTPS proxy pointing at flareHost.
-    // We verify both that the proxy is enabled and that the configured host matches.
     func checkProfileInstalled() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -121,11 +118,8 @@ class FlareUAStore: ObservableObject {
         guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
             return false
         }
-        // kCFNetworkProxiesHTTPSEnable / kCFNetworkProxiesHTTPSProxy are macOS-only.
-        // On iOS, CFNetworkCopySystemProxySettings exposes HTTP proxy keys only.
         let httpEnabled = (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
         let httpHost = settings[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
-        // The HTTPS proxy keys use these raw string values on iOS (not the typed constants).
         let httpsEnabled = (settings["HTTPSEnable"] as? Int) == 1
         let httpsHost = settings["HTTPSProxy"] as? String ?? ""
         return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
@@ -283,7 +277,7 @@ struct HomeView: View {
                                 .font(.title2)
                             Text("Proxy profile not installed")
                                 .font(.subheadline.bold())
-                            Text("Go to About tab to install, then return here")
+                            Text("Go to About tab to install")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -472,8 +466,6 @@ struct CustomView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var store: FlareUAStore
-    @State var showInstallError = false
-    @State var installErrorMsg = ""
     @State var isCheckingProfile = false
 
     var appVersion: String {
@@ -485,7 +477,7 @@ struct SettingsView: View {
             Form {
                 Section(
                     header: Text("Proxy Profile"),
-                    footer: Text("Installs a system-wide proxy profile that routes all HTTP/HTTPS traffic through FlareUA. After installing in Settings, return to the app — status updates automatically.")
+                    footer: Text("Opens the profile in Safari so iOS can install it. After installing, return to the app.")
                 ) {
                     HStack {
                         Label("Status", systemImage: store.isProxyInstalled ? "checkmark.seal.fill" : "xmark.seal.fill")
@@ -496,9 +488,9 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        installMobileConfig()
+                        UIApplication.shared.open(profileInstallURL)
                     } label: {
-                        Label("Install Proxy Profile", systemImage: "arrow.down.circle.fill")
+                        Label("Install Profile", systemImage: "arrow.down.circle.fill")
                             .foregroundColor(.orange)
                     }
 
@@ -527,34 +519,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("About")
-            .alert("Install Failed", isPresented: $showInstallError) {
-                Button("OK") {}
-            } message: {
-                Text(installErrorMsg)
-            }
-        }
-    }
-
-    func installMobileConfig() {
-        let config = store.generateMobileConfig()
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("FlareUA.mobileconfig")
-
-        do {
-            try config.write(to: tempURL, atomically: true, encoding: .utf8)
-        } catch {
-            installErrorMsg = "Failed to write profile: \(error.localizedDescription)"
-            showInstallError = true
-            return
-        }
-
-        UIApplication.shared.open(tempURL) { success in
-            DispatchQueue.main.async {
-                if !success {
-                    self.installErrorMsg = "iOS couldn't open the profile. Go to Settings > General > VPN & Device Management manually."
-                    self.showInstallError = true
-                }
-                // Do NOT mark as installed here — checkProfileInstalled() on foreground return handles it
-            }
         }
     }
 }

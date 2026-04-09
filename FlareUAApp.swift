@@ -107,14 +107,7 @@ class FlareUAStore: ObservableObject {
         guard let url = URL(string: "http://\(flareProxyHost)/flareua-probe") else { return }
         var req = URLRequest(url: url)
         req.timeoutInterval = 8
-        let config = URLSessionConfiguration.ephemeral
-        config.connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable as String: true,
-            kCFNetworkProxiesHTTPProxy as String: flareProxyHost,
-            kCFNetworkProxiesHTTPPort as String: flareProxyPort,
-        ]
-        let session = URLSession(configuration: config)
-        session.dataTask(with: req) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
             guard let self = self else { return }
             let proxied: Bool
             if let data = data,

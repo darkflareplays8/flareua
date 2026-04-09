@@ -527,7 +527,7 @@ struct SettingsView: View {
                 Section("About") {
                     LabeledContent("App", value: "FlareUA")
                     LabeledContent("Version", value: appVersion)
-                    LabeledContent("Proxy", value: flareHost)
+                    LabeledContent("Proxy", value: flareProxyHost)
                 }
 
                 if !store.proxyDebugDump.isEmpty {

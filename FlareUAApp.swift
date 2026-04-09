@@ -1,9 +1,10 @@
 import SwiftUI
 import Foundation
 
-let flareHost = "flareua.pages.dev"
+let flareProxyHost = "YOUR-APP.up.railway.app"
+let flareProxyPort = 8080
 let profileIdentifier = "com.flareua.profile"
-let profileInstallURL = URL(string: "http://\(flareHost)/profile")!
+let profileInstallURL = URL(string: "https://\(flareProxyHost)/profile")!
 
 struct UserAgent: Identifiable, Codable, Equatable {
     let id: UUID
@@ -103,32 +104,32 @@ class FlareUAStore: ObservableObject {
     @Published var proxyDebugDump: String = ""
 
     func checkProfileInstalled() {
-        // Cloudflare Pages Functions cannot act as a TCP CONNECT proxy, so the
-        // old approach of probing http://example.com/flareua-probe always failed
-        // with "bad response". We instead hit our worker's health endpoint directly
-        // over HTTPS to confirm it is reachable, which is sufficient to verify
-        // the worker is live and the profile install can proceed.
-        guard let url = URL(string: "https://\(flareHost)/flareua-health") else { return }
+        guard let url = URL(string: "http://\(flareProxyHost)/flareua-probe") else { return }
         var req = URLRequest(url: url)
-        req.timeoutInterval = 6
+        req.timeoutInterval = 8
         let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable as String: true,
+            kCFNetworkProxiesHTTPProxy as String: flareProxyHost,
+            kCFNetworkProxiesHTTPPort as String: flareProxyPort,
+        ]
         let session = URLSession(configuration: config)
         session.dataTask(with: req) { [weak self] data, response, error in
             guard let self = self else { return }
-            let ok: Bool
+            let proxied: Bool
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let status = json["status"] as? String, status == "ok" {
-                ok = true
+               let p = json["proxied"] as? Bool, p == true {
+                proxied = true
             } else {
-                ok = false
+                proxied = false
             }
             DispatchQueue.main.async {
-                self.proxyDebugDump = ok
+                self.proxyDebugDump = proxied
                     ? "Probe: proxied=true"
-                    : "Probe: proxied=false (error: \(error?.localizedDescription ?? "worker unreachable"))"
-                self.isProxyInstalled = ok
-                if !ok {
+                    : "Probe: proxied=false (error: \(error?.localizedDescription ?? "bad response"))"
+                self.isProxyInstalled = proxied
+                if !proxied {
                     self.activeAgent = nil
                     self.save()
                 }
@@ -156,15 +157,15 @@ class FlareUAStore: ObservableObject {
             <key>HTTPEnable</key>
             <integer>1</integer>
             <key>HTTPProxy</key>
-            <string>\(flareHost)</string>
+            <string>\(flareProxyHost)</string>
             <key>HTTPPort</key>
-            <integer>443</integer>
+            <integer>\(flareProxyPort)</integer>
             <key>HTTPSEnable</key>
             <integer>1</integer>
             <key>HTTPSProxy</key>
-            <string>\(flareHost)</string>
+            <string>\(flareProxyHost)</string>
             <key>HTTPSPort</key>
-            <integer>443</integer>
+            <integer>\(flareProxyPort)</integer>
         </dict>
     </array>
     <key>PayloadDisplayName</key>

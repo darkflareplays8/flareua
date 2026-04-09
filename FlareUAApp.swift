@@ -122,12 +122,26 @@ class FlareUAStore: ObservableObject {
             return (false, "CFNetworkCopySystemProxySettings returned nil")
         }
         let dump = settings.map { "\($0.key): \($0.value)" }.sorted().joined(separator: "\n")
-        let httpEnabled = (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
-        let httpHost = settings[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
-        let httpsEnabled = (settings["HTTPSEnable"] as? Int) == 1
-        let httpsHost = settings["HTTPSProxy"] as? String ?? ""
-        let found = (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
-        return (found, dump)
+
+        if checkProxyDict(settings) { return (true, dump) }
+
+        if let scoped = settings["__SCOPED__"] as? [String: Any] {
+            for (_, val) in scoped {
+                if let iface = val as? [String: Any], checkProxyDict(iface) {
+                    return (true, dump)
+                }
+            }
+        }
+
+        return (false, dump)
+    }
+
+    private static func checkProxyDict(_ d: [String: Any]) -> Bool {
+        let httpEnabled = (d[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
+        let httpHost = d[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
+        let httpsEnabled = (d["HTTPSEnable"] as? Int) == 1
+        let httpsHost = d["HTTPSProxy"] as? String ?? ""
+        return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
     }
 
     func generateMobileConfig() -> String {

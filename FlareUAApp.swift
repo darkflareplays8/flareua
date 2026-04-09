@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
 
-let flareProxyHost = "YOUR-APP.up.railway.app"
+let flareProxyHost = "flareua-production.up.railway.app"
 let flareProxyPort = 8080
 let profileIdentifier = "com.flareua.profile"
 let profileInstallURL = URL(string: "https://\(flareProxyHost)/profile")!

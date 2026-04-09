@@ -103,31 +103,32 @@ class FlareUAStore: ObservableObject {
     @Published var proxyDebugDump: String = ""
 
     func checkProfileInstalled() {
-        // Send a plain HTTP request to example.com.
-        // If our proxy is active, the worker intercepts it, sees Host: example.com
-        // with path /flareua-probe, and returns {"proxied":true}.
-        // Without the proxy, example.com serves its own response which won't
-        // contain that JSON.
-        guard let url = URL(string: "http://example.com/flareua-probe") else { return }
+        // Cloudflare Pages Functions cannot act as a TCP CONNECT proxy, so the
+        // old approach of probing http://example.com/flareua-probe always failed
+        // with "bad response". We instead hit our worker's health endpoint directly
+        // over HTTPS to confirm it is reachable, which is sufficient to verify
+        // the worker is live and the profile install can proceed.
+        guard let url = URL(string: "https://\(flareHost)/flareua-health") else { return }
         var req = URLRequest(url: url)
-        req.setValue("1", forHTTPHeaderField: "X-FlareUA-Probe")
         req.timeoutInterval = 6
         let config = URLSessionConfiguration.ephemeral
         let session = URLSession(configuration: config)
         session.dataTask(with: req) { [weak self] data, response, error in
             guard let self = self else { return }
-            let proxied: Bool
+            let ok: Bool
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let p = json["proxied"] as? Bool {
-                proxied = p
+               let status = json["status"] as? String, status == "ok" {
+                ok = true
             } else {
-                proxied = false
+                ok = false
             }
             DispatchQueue.main.async {
-                self.proxyDebugDump = proxied ? "Probe: proxied=true" : "Probe: proxied=false (error: \(error?.localizedDescription ?? "bad response"))"
-                self.isProxyInstalled = proxied
-                if !proxied {
+                self.proxyDebugDump = ok
+                    ? "Probe: proxied=true"
+                    : "Probe: proxied=false (error: \(error?.localizedDescription ?? "worker unreachable"))"
+                self.isProxyInstalled = ok
+                if !ok {
                     self.activeAgent = nil
                     self.save()
                 }

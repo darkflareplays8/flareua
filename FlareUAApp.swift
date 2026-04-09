@@ -103,45 +103,32 @@ class FlareUAStore: ObservableObject {
     @Published var proxyDebugDump: String = ""
 
     func checkProfileInstalled() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // Make a plain HTTP request to a fake domain that only resolves if
+        // our proxy is active and routing it to flareua.pages.dev/probe.
+        // The worker returns {"proxied":true} when Host != flareua.pages.dev.
+        guard let url = URL(string: "http://flareua-probe.invalid/probe") else { return }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 6
+        let session = URLSession(configuration: config)
+        session.dataTask(with: url) { [weak self] data, _, error in
             guard let self = self else { return }
-            let (found, dump) = Self.proxyProfileIsActive()
+            let proxied: Bool
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let p = json["proxied"] as? Bool {
+                proxied = p
+            } else {
+                proxied = false
+            }
             DispatchQueue.main.async {
-                self.proxyDebugDump = dump
-                self.isProxyInstalled = found
-                if !found {
+                self.proxyDebugDump = proxied ? "Probe: proxied=true" : "Probe: no proxy response (error: \(error?.localizedDescription ?? "nil data"))"
+                self.isProxyInstalled = proxied
+                if !proxied {
                     self.activeAgent = nil
                     self.save()
                 }
             }
-        }
-    }
-
-    private static func proxyProfileIsActive() -> (Bool, String) {
-        guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
-            return (false, "CFNetworkCopySystemProxySettings returned nil")
-        }
-        let dump = settings.map { "\($0.key): \($0.value)" }.sorted().joined(separator: "\n")
-
-        if checkProxyDict(settings) { return (true, dump) }
-
-        if let scoped = settings["__SCOPED__"] as? [String: Any] {
-            for (_, val) in scoped {
-                if let iface = val as? [String: Any], checkProxyDict(iface) {
-                    return (true, dump)
-                }
-            }
-        }
-
-        return (false, dump)
-    }
-
-    private static func checkProxyDict(_ d: [String: Any]) -> Bool {
-        let httpEnabled = (d[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
-        let httpHost = d[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
-        let httpsEnabled = (d["HTTPSEnable"] as? Int) == 1
-        let httpsHost = d["HTTPSProxy"] as? String ?? ""
-        return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
+        }.resume()
     }
 
     func generateMobileConfig() -> String {

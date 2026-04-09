@@ -59,16 +59,16 @@ export async function onRequest(context) {
         });
     }
 
-    // Probe endpoint: returns {"proxied":true} only when the request
-    // arrived as a proxy request (Host header != flareua.pages.dev).
-    // A direct request from the app to https://flareua.pages.dev/probe
-    // will have Host: flareua.pages.dev and get {"proxied":false}.
-    // A request to http://flareua-probe.invalid/probe routed through
-    // our proxy will have Host: flareua-probe.invalid and get {"proxied":true}.
+    // /flareua-probe on ANY host = proxied probe request intercepted by our worker
+    if (url.pathname === "/flareua-probe" && request.headers.get("X-FlareUA-Probe") === "1") {
+        return new Response(JSON.stringify({ proxied: true }), {
+            headers: { "Content-Type": "application/json" },
+        });
+    }
+
+    // Direct probe to our own host = not proxied
     if (url.pathname === "/probe") {
-        const host = request.headers.get("host") ?? "";
-        const proxied = !host.includes(flareHost);
-        return new Response(JSON.stringify({ proxied }), {
+        return new Response(JSON.stringify({ proxied: false }), {
             headers: { "Content-Type": "application/json" },
         });
     }

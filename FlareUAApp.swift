@@ -100,11 +100,14 @@ class FlareUAStore: ObservableObject {
         save()
     }
 
+    @Published var proxyDebugDump: String = ""
+
     func checkProfileInstalled() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            let found = Self.proxyProfileIsActive()
+            let (found, dump) = Self.proxyProfileIsActive()
             DispatchQueue.main.async {
+                self.proxyDebugDump = dump
                 self.isProxyInstalled = found
                 if !found {
                     self.activeAgent = nil
@@ -114,15 +117,17 @@ class FlareUAStore: ObservableObject {
         }
     }
 
-    private static func proxyProfileIsActive() -> Bool {
+    private static func proxyProfileIsActive() -> (Bool, String) {
         guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
-            return false
+            return (false, "CFNetworkCopySystemProxySettings returned nil")
         }
+        let dump = settings.map { "\($0.key): \($0.value)" }.sorted().joined(separator: "\n")
         let httpEnabled = (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1
         let httpHost = settings[kCFNetworkProxiesHTTPProxy as String] as? String ?? ""
         let httpsEnabled = (settings["HTTPSEnable"] as? Int) == 1
         let httpsHost = settings["HTTPSProxy"] as? String ?? ""
-        return (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
+        let found = (httpEnabled && httpHost == flareHost) || (httpsEnabled && httpsHost == flareHost)
+        return (found, dump)
     }
 
     func generateMobileConfig() -> String {
@@ -516,6 +521,16 @@ struct SettingsView: View {
                     LabeledContent("App", value: "FlareUA")
                     LabeledContent("Version", value: appVersion)
                     LabeledContent("Proxy", value: flareHost)
+                }
+
+                if !store.proxyDebugDump.isEmpty {
+                    Section(header: Text("Proxy Settings Dump")) {
+                        ScrollView(.horizontal) {
+                            Text(store.proxyDebugDump)
+                                .font(.system(size: 10, design: .monospaced))
+                                .padding(4)
+                        }
+                    }
                 }
             }
             .navigationTitle("About")
